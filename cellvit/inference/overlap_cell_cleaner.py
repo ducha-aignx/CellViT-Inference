@@ -14,11 +14,11 @@ import pandas as pd
 from collections import deque
 
 from shapely import strtree
+import shapely
 from shapely.geometry import MultiPolygon, Polygon
-import warnings
-from shapely.errors import ShapelyDeprecationWarning
+from packaging.version import parse as parse_version
 
-warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+# warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 
 class OverlapCellCleaner:
@@ -135,6 +135,29 @@ class OverlapCellCleaner:
         Returns:
             pd.DataFrame: Cleaned DataFrame
         """
+        shapely_version = parse_version(shapely.__version__)
+        shapely_ge_2_0 = shapely_version >= parse_version("2.0")
+        if not shapely_ge_2_0:
+            merged_cells = self._remove_overlap_shapely_1_8(
+                cleaned_edge_cells=cleaned_edge_cells
+            )
+        else:
+            merged_cells = self._remove_overlap_shapely_2(
+                cleaned_edge_cells=cleaned_edge_cells
+            )
+        return merged_cells
+
+    def _remove_overlap_shapely_1_8(
+        self, cleaned_edge_cells: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Remove overlapping cells from provided DataFrame
+
+        Args:
+            cleaned_edge_cells (pd.DataFrame): DataFrame that should be cleaned
+
+        Returns:
+            pd.DataFrame: Cleaned DataFrame
+        """
         merged_cells = cleaned_edge_cells
 
         for iteration in range(20):
@@ -154,7 +177,7 @@ class OverlapCellCleaner:
                             poly = Polygon(poly)
                     else:
                         poly = Polygon(multi)
-                poly.uid = idx
+                # poly.uid = idx
                 poly_list.append(poly)
 
             # use an strtree for fast querying
@@ -209,9 +232,108 @@ class OverlapCellCleaner:
             if overlaps == 0:
                 self.logger.info("Found all overlapping cells")
                 break
-            elif iteration == 20:
+            elif iteration == 19:
                 self.logger.info(
                     f"Not all doubled cells removed, still {overlaps} to remove. For perfomance issues, we stop iterations now. Please raise an issue in git or increase number of iterations."
+                )
+            merged_cells = cleaned_edge_cells.loc[
+                cleaned_edge_cells.index.isin(merged_idx)
+            ].sort_index()
+
+        return merged_cells.sort_index()
+
+    def _remove_overlap_shapely_2(
+        self, cleaned_edge_cells: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Remove overlapping cells from provided DataFrame
+
+        Args:
+            cleaned_edge_cells (pd.DataFrame): DataFrame that should be cleaned
+
+        Returns:
+            pd.DataFrame: Cleaned DataFrame
+        """
+        merged_cells = cleaned_edge_cells
+
+        for iteration in range(20):
+            # Store polygons with their original indices
+            poly_with_idx = []
+            for idx, cell_info in merged_cells.iterrows():
+                poly = Polygon(cell_info["contour"])
+                if not poly.is_valid:
+                    self.logger.debug("Found invalid polygon - Fixing with buffer 0")
+                    multi = poly.buffer(0)
+                    if isinstance(multi, MultiPolygon):
+                        if len(multi.geoms) > 1:
+                            poly_idx = np.argmax([p.area for p in multi.geoms])
+                            poly = multi.geoms[poly_idx]
+                            poly = Polygon(poly)
+                        else:
+                            poly = multi.geoms[0]
+                            poly = Polygon(poly)
+                    else:
+                        poly = Polygon(multi)
+                poly_with_idx.append((poly, idx))
+
+            # Extract just the polygons for the STRtree
+            polygons = [p for p, _ in poly_with_idx]
+
+            # Create STRtree with the polygons
+            tree = strtree.STRtree(polygons)
+
+            merged_idx = deque()
+            iterated_cells = set()
+            overlaps = 0
+
+            for i, (query_poly, orig_idx) in enumerate(poly_with_idx):
+                if orig_idx not in iterated_cells:
+                    # In Shapely 2.0+, query returns indices not objects
+                    intersected_indices = tree.query(query_poly)
+
+                    if (
+                        len(intersected_indices) > 1
+                    ):  # we have at least one intersection with another cell
+                        submergers = []  # all cells that overlap with query
+                        for inter_idx in intersected_indices:
+                            inter_poly, inter_orig_idx = poly_with_idx[inter_idx]
+
+                            if (
+                                inter_orig_idx != orig_idx
+                                and inter_orig_idx not in iterated_cells
+                            ):
+                                intersection = query_poly.intersection(inter_poly)
+                                if (
+                                    intersection.area / query_poly.area > 0.01
+                                    or intersection.area / inter_poly.area > 0.01
+                                ):
+                                    overlaps = overlaps + 1
+                                    submergers.append((inter_poly, inter_orig_idx))
+                                    iterated_cells.add(inter_orig_idx)
+
+                        # catch block: empty list -> some cells are touching, but not overlapping strongly enough
+                        if len(submergers) == 0:
+                            merged_idx.append(orig_idx)
+                        else:  # merging strategy: take the biggest cell
+                            selected_poly_index = np.argmax(
+                                np.array([p.area for p, _ in submergers])
+                            )
+                            selected_poly_uid = submergers[selected_poly_index][1]
+                            merged_idx.append(selected_poly_uid)
+                    else:
+                        # no intersection, just add
+                        merged_idx.append(orig_idx)
+
+                    iterated_cells.add(orig_idx)
+
+            self.logger.info(
+                f"Iteration {iteration}: Found overlap of # cells: {overlaps}"
+            )
+            if overlaps == 0:
+                self.logger.info("Found all overlapping cells")
+                break
+            elif iteration == 19:  # Changed from 20 to 19 since we're 0-indexed
+                self.logger.info(
+                    f"Not all doubled cells removed, still {overlaps} to remove. For performance issues, we stop iterations now. Please raise an issue in git or increase number of iterations."
                 )
             merged_cells = cleaned_edge_cells.loc[
                 cleaned_edge_cells.index.isin(merged_idx)

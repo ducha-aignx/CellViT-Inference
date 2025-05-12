@@ -667,12 +667,18 @@ class CellViTInference:
             filter_patches (bool, optional): Filter patches after processing. Defaults to False.
         """
         wsi_path = Path(wsi_path)
-        self.logger.info(f"Processing WSI: {wsi_path.name}")
+        if wsi_path.suffix == ".dcm":
+            self.logger.info(f"Processing WSI: {wsi_path.parent.name}")
+        else:
+            self.logger.info(f"Processing WSI: {wsi_path.name}")
         self.logger.info(f"Preparing WSI - Loading tissue region and prepare patches")
 
         # create output directory
         self.outdir.mkdir(exist_ok=True, parents=True)
-        wsi_outdir = self.outdir / wsi_path.stem
+        if wsi_path.suffix == ".dcm":
+            wsi_outdir = self.outdir / wsi_path.parent.name
+        else:
+            wsi_outdir = self.outdir / wsi_path.parent.stem
         wsi_outdir.mkdir(exist_ok=True, parents=True)
 
         # load metadata
@@ -899,7 +905,10 @@ class CellViTInference:
             )
 
         # saving/storing
-        output_wsi_name = wsi_path.name.split(".")[0]
+        if wsi_path.suffix == ".dcm":
+            output_wsi_name = wsi_path.parent.name
+        else:
+            output_wsi_name = wsi_path.stem
         cell_dict_wsi = {
             "wsi_metadata": wsi.metadata,
             "type_map": self.label_map,
@@ -987,7 +996,11 @@ class CellViTInference:
         if (self.outdir / "processed_files.json").exists():
             with open(self.outdir / "processed_files.json", "r") as infile:
                 processed_files = ujson.load(infile)
-        processed_files.append(wsi_path.name)
+
+        if wsi_path.suffix == ".dcm":
+            processed_files.append(wsi_path.parent.name)
+        else:
+            processed_files.append(wsi_path.name)
         processed_files = list(set(processed_files))
         with open(self.outdir / "processed_files.json", "w") as outfile:
             ujson.dump(processed_files, outfile)
