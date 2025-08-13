@@ -678,7 +678,7 @@ class CellViTInference:
         if wsi_path.suffix == ".dcm":
             wsi_outdir = self.outdir / wsi_path.parent.name
         else:
-            wsi_outdir = self.outdir / wsi_path.parent.stem
+            wsi_outdir = self.outdir / wsi_path.stem
         wsi_outdir.mkdir(exist_ok=True, parents=True)
 
         # load metadata
