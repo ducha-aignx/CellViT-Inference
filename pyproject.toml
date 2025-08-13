@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cellvit"
-version = "1.0.6"
+version = "1.0.8"
 description = "CellViT Inference Pipeline for Whole Slide Images (WSI) in Memory"
 authors = [
     { name = "Fabian Hörst", email = "fabian.hoerst@uk-essen.de" }
@@ -31,7 +31,7 @@ dependencies = [
     "numpy<2.0.0",
     "opencv-python-headless==4.7.0.72",
     "opt-einsum>=3.3.0",
-    "pandas>=1.4.3,<2.0.0",
+    "pandas",
     "pathopatch>=1.0.9",
     "pydantic>=1.10.16,<2.0",
     "pydicom==2.4.4",
@@ -58,3 +58,4 @@ License = "https://github.com/TIO-IKIM/CellViT-Inference/blob/main/LICENSE"
 cellvit-inference = "cellvit.detect_cells:main"
 cellvit-check = "cellvit.check_system:main"
 cellvit-download-examples = "cellvit.utils.cache_test_database:cache_test_database"
+cellvit-download-models = "cellvit.utils.cache_models:main"

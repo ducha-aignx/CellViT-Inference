@@ -82,3 +82,15 @@ def cache_classifier(logger: Optional[logging.Logger] = None) -> Path:
         if zip_dir.exists():
             os.remove(zip_dir)
     return classifier_dir
+
+
+def main():
+    """Main function to cache models and classifier."""
+    logger = PrintLogger()
+    cache_cellvit_sam_h(logger)
+    cache_cellvit_256(logger)
+    cache_classifier(logger)
+
+
+if __name__ == "__main__":
+    main()

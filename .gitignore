@@ -44,3 +44,4 @@ check_examples.sh
 
 # Unnecessary files
 test_scripts
+json_to_geojson.ipynb
